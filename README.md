@@ -4,5 +4,5 @@
 
 ## Usage
 ```sh
-python xml2ass.py xxx.xml
+python openrec_comment.py https://www.openrec.tv/live/p2zjvn06lzw
 ```
