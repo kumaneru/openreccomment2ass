@@ -1,8 +1,9 @@
 #-*- coding:utf-8 -*-
 import re
 import sys
-from datetime import datetime
+import datetime
 import math
+import argparse
 
 import requests
 
@@ -10,14 +11,19 @@ def sec2hms(sec):  # 时间转换
     hms = str(int(sec//3600)).zfill(2)+':' + str(int((sec % 3600)//60)).zfill(2)+':'+str(round(sec % 60, 2))
     return hms
 
-def openrecComment2ass(url_or_id):
-    id = re.findall(r"\w+$",url_or_id)[0]
+def openrecComment2ass(id, chat_secret_key):
     detail_url = f'https://public.openrec.tv/external/api/v5/movies/{id}'
     #获取开始时间和节目标题
     res_js = requests.get(detail_url).json()
 
     started_at = res_js['started_at']
+    print(f'started_at: {started_at}')
+    end_at = res_js['ended_at']
+    print(f'end_at: {end_at}')
     from_created_at = res_js['started_at']
+    dt_fmt = '%Y-%m-%dT%H:%M:%S%z' # 2024-03-26T19:55:02+09:00
+    from_created_at = datetime.datetime.strptime(from_created_at, dt_fmt)
+    end_at_dt = datetime.datetime.strptime(end_at, dt_fmt)
     title = res_js['title']
 
     #获取弹幕
@@ -26,19 +32,26 @@ def openrecComment2ass(url_or_id):
     chat_url = f'https://public.openrec.tv/external/api/v5/movies/{id}/chats'
     LIMIT = 300
     while True:
+        print(f'now_at: {from_created_at}')
         params = {
     	    'from_created_at': from_created_at,
-    	    'limit': LIMIT
+            'chat_secret_key' : chat_secret_key
         }
         res = requests.get(chat_url, params=params).json()
         chats += res
-        from_created_at = chats[-1]['messaged_at']
+        if len(res) > 0:
+            from_created_at = datetime.datetime.strptime(chats[-1]['messaged_at'], dt_fmt)
         if len(res) < LIMIT:
-            break
+            if from_created_at >= end_at_dt:
+                print('Reached the end of the live stream.')
+                break
+            else:
+                from_created_at = from_created_at + datetime.timedelta(seconds=1)
+
 
     # 弹幕信息去重
     dt_fmt = '%Y-%m-%dT%H:%M:%S%z' # 2024-03-26T19:55:02+09:00
-    started_at_dt = datetime.strptime(started_at, dt_fmt)
+    started_at_dt = datetime.datetime.strptime(started_at, dt_fmt)
     # remove duplicates by unique "id" 
     print(f'Find {len(chats)} chats.')
     chats = list({chat['id']:chat for chat in chats  if chat['message']}.values())
@@ -78,7 +91,7 @@ Comment: 0,00:00:00.0,00:00:00.0,Danmaku,标题,0,0,0,,{title}
     ass.write(ass_head)
     # 写入弹幕
     for chat in chats:
-        posted_at_dt = datetime.strptime(chat['posted_at'], dt_fmt)
+        posted_at_dt = datetime.datetime.strptime(chat['posted_at'], dt_fmt)
         vpos = (posted_at_dt - started_at_dt).total_seconds()
         vpos_end = vpos + 8
         nickname = chat['user']['nickname']
@@ -118,8 +131,16 @@ Comment: 0,00:00:00.0,00:00:00.0,Danmaku,标题,0,0,0,,{title}
     # 完成后输出信息
     print(f'{title}的弹幕共{len(chats)}条，已输出至{id}.ass')
 
+def main():
+    if len(sys.argv) == 1:
+        sys.argv.append('--help')
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-K', '--chat-secret-key', metavar='str', help='会员限定内容的chat secret key')
+    parser.add_argument('id', metavar='str',help='openrec网页链接或最后一串视频id')
+    args = parser.parse_args()
+    id = re.findall(r"\w+$",args.id)[0]
+    chat_secret_key = args.chat_secret_key if args.chat_secret_key else None
+    openrecComment2ass(id, chat_secret_key)
 
 if __name__ == '__main__':
-    if len(sys.argv) > 1:
-        for i in range(1, len(sys.argv)):
-            openrecComment2ass(sys.argv[i])
+    main()
