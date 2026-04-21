@@ -39,14 +39,13 @@ def openrecComment2ass(id, chat_secret_key):
         }
         res = requests.get(chat_url, params=params).json()
         chats += res
-        if len(res) > 0:
+        if from_created_at >= datetime.datetime.strptime(chats[-1]['messaged_at'], dt_fmt):
+            break 
+        elif len(res) > 0:
             from_created_at = datetime.datetime.strptime(chats[-1]['messaged_at'], dt_fmt)
-        if len(res) < LIMIT:
-            if from_created_at >= end_at_dt:
-                print('Reached the end of the live stream.')
-                break
-            else:
-                from_created_at = from_created_at + datetime.timedelta(seconds=1)
+        if from_created_at >= end_at_dt:
+            print('Reached the end of the live stream.')
+            break
 
 
     # 弹幕信息去重
